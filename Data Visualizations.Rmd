@@ -1,0 +1,166 @@
+---
+title: "Data Visualizations"
+author: "Benjamin Allen"
+date: '`r Sys.Date()`'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(psych)
+library(corrplot)
+library(sf)
+library(maps)
+library(extrafont)
+library(plotly)
+library(scales)
+library(leaflet)
+library(leaflet.providers)
+library(ragg)
+```
+
+## Summary
+
+This document includes all the code used to make data visualizations for this
+project.
+
+### Distribution of Response Variables
+
+```{r}
+# Rent
+rent_dist_plot <- acs_data %>% 
+  filter(year == 2010 | year == 2015 | year == 2021) %>% 
+  ggplot() +
+  geom_vline(xintercept = 500, col = "red") + geom_vline(xintercept = 1000, col = "red") +
+  geom_histogram(mapping = aes(`Median contract rent`), size = 1, col = "firebrick4", fill = "firebrick", alpha = 0.5) +
+  labs(title = "Distribution of Median Rent Amounts in Cook County",
+       subtitle = "Data by census tract from 2010 to 20211", y = "Number of Tracts", x = "Median Contract Rent (US$)") +
+  theme_bw() + facet_wrap(~year) + scale_x_continuous(label = dollar_format())
+rent_dist_plot
+
+# Home Values
+home_dist_plot <- acs_data %>% 
+  filter(year == 2010 | year == 2015 | year == 2021) %>% 
+  ggplot() + 
+  geom_vline(xintercept = 500000, col = "red") + geom_vline(xintercept = 1000000, col = "red") +
+  geom_histogram(mapping = aes(`Median value (dollars)`), size = 1, col = "chartreuse4", fill = "chartreuse3", alpha = 0.5) +
+  labs(title = "Distribution of Median Home Values in Cook County",
+       subtitle = "Data by census tract from 2010 to 2021", y = "Number of Tracts", x = "Median Home Value (US$)") +
+  theme_bw() + facet_wrap(~year) + scale_x_continuous(label = dollar_format())
+home_dist_plot
+
+# Household Income
+income_dist_plot <- acs_data %>% 
+  filter(year == 2010 | year == 2015 | year == 2021) %>% 
+  ggplot() +
+  geom_histogram(mapping = aes(`Households`), size = 1, col = "royalblue4", fill = "royalblue", alpha = 0.5) +
+  labs(title = "Distribution of Median Household Income in Cook County",
+       subtitle = "Data by census tract from 2010 to 2021", y = "Number of Tracts", x = "Median Household Income (US$)") +
+  theme_bw() + facet_wrap(~year) + scale_x_continuous(label = dollar_format())
+income_dist_plot
+```
+
+### Line Plots
+
+```{r}
+# Transportation Types
+comtype_time_plot <- acs_data %>%
+  select(c("Geography", "Car, truck, or van":"Worked at home", "year", "geometry")) %>%
+  pivot_longer(cols = c("Car, truck, or van":"Worked at home"), names_to = "transport_type") %>% 
+  filter(Geography != 17031990000) %>% 
+  group_by(transport_type, year) %>% 
+  summarise(total = sum(value)) %>% 
+  ggplot() +
+    geom_line(mapping = aes(x = year, y = total, col = transport_type), size = 2, alpha = 0.8) +
+    geom_point(mapping = aes(x = year, y = total, col = transport_type), size = 2, alpha = 0.8) +
+    theme_bw() + scale_color_manual(values = c("#27213c", "#a33b20", "#EA526F", "#FF8A5B", "#25CED1",
+                                               "#2274A5", "#F0CF65", "#BD4F6C", "#93B5C6", "#83B692",
+                                               "#5B3758", "#BA2C73", "#48E5C2", "#690500", "#FF331F"),
+                                    name = "Transport Type") +
+    labs(title = "Transportation Over Time in Cook County", subtitle = "Data from 2010 to 2021",
+         x = "Year", y = "Total Number of Commuters") +
+    scale_y_continuous(labels = label_comma())
+ggplotly(comtype_time_plot)
+```
+
+```{r}
+# Commute Times
+comtime_time_plot <- acs_data %>%
+  mutate(`19 or fewer minutes` = `Less than 5 minutes` + `5 to 9 minutes` + `10 to 14 minutes` + `15 to 19 minutes`,
+         `20 to 39 minutes` = `20 to 24 minutes` + `25 to 29 minutes` + `30 to 34 minutes` + `35 to 39 minutes`,
+         `40 to 59 minutes` = `40 to 44 minutes` + `45 to 59 minutes`) %>% 
+  select(c("Geography", "19 or fewer minutes":"40 to 59 minutes", "60 to 89 minutes", "90 or more minutes", "year", "geometry")) %>%
+  pivot_longer(cols = c("19 or fewer minutes":"40 to 59 minutes", "60 to 89 minutes", "90 or more minutes",),
+               names_to = "commute_time") %>% 
+  filter(Geography != 17031990000) %>% 
+  group_by(commute_time, year) %>% 
+  summarise(total = sum(value)) %>% 
+  ggplot() +
+    geom_line(mapping = aes(x = year, y = total, col = commute_time), size = 3, alpha = 0.8) +
+    geom_point(mapping = aes(x = year, y = total, col = commute_time), size = 3, alpha = 0.8) +
+    theme_bw() + scale_color_manual(values = c("#EA526F", "#FF8A5B", "#25CED1", "#2274A5", "#F0CF65"),
+                                    name = "Commute Time") +
+    labs(title = "Commute Times in Cook County (2010 - 2021)",
+         x = "Year", y = "Total Number of Commuters") +
+    scale_y_continuous(labels = label_comma())
+ggplotly(comtime_time_plot)
+```
+
+```{r}
+# Income, Rent, and Home Value Line Plots
+income_time_plot <- acs_data %>% 
+  select(c("Geography", "Households", "Median value (dollars)", "Median contract rent", "year")) %>% 
+  pivot_longer(cols = c("Households", "Median value (dollars)", "Median contract rent"), names_to = "var_type") %>% 
+  filter(Geography != 17031990000) %>% 
+  mutate(var_type = case_match(var_type, "Households" ~ "Income", "Median value (dollars)" ~ "Home Value",
+                    "Median contract rent"~ "Contract Rent")) %>% 
+  group_by(year, var_type) %>% 
+  summarise(`Median Amount (US$)` = median(value)) %>% 
+  ggplot() +
+   geom_line(mapping = aes(x = year, y = `Median Amount (US$)`, col = var_type), size = 3, alpha = 0.8) +
+    geom_point(mapping = aes(x = year, y = `Median Amount (US$)`, col = var_type), size = 3, alpha = 0.8) +
+    theme_bw() + facet_wrap(~var_type, scales = "free") +
+    labs(title = "Median Income in Cook County (2010 - 2021)", x = "Year") +
+    scale_y_continuous(labels = label_dollar())
+ggplotly(income_time_plot)
+```
+
+```{r}
+# Correlation Plots
+corr_data <- acs_data %>% 
+  select(c("Median value (dollars)", "Households", "Median contract rent", "Total population",
+           "White alone":"Two or more races")) %>% 
+  mutate(across(c("White alone":"Two or more races"), ~ .x / `Total population`)) %>% 
+  mutate(across(c("White alone":"Two or more races"), ~ ifelse(is.na(.x), 0, .x)))
+  
+colnames(corr_data) <- c("Home Values", "Income", "Contract rent", "Total", "White", "Black", "Native American",
+                         "Asian", "Pacific Islander", "Other", "Mixed Race")
+
+corrplot(cor(corr_data), method = "square")
+
+corr2_data <- acs_data %>% 
+  select(c("Median value (dollars)", "Households", "Median contract rent", "Total (ComType)":"Worked at home")) %>% 
+  mutate(across(c(`Car, truck, or van`:`Worked at home`), ~ .x / `Total (ComType)`)) %>% 
+  mutate(across(c(`Car, truck, or van`:`Worked at home`), ~ ifelse(is.na(.x), 0, .x)))
+corrplot(cor(corr2_data), method = "square")
+
+corr_data <- acs_data %>% 
+  select(c("Geography":"Worked at home")) %>% 
+  mutate(across(c("White alone":"Two or more races"), ~ .x / `Total population`)) %>% 
+  mutate(across(c(`Car, truck, or van`:`Worked at home`),  ~ .x / `Total (ComType)`)) %>% 
+  mutate(across(c(`Under 5 years`:`85 years and over`), ~ .x / `Total population`)) %>% 
+  mutate(across(c(`Less than 5 minutes`:`90 or more minutes`), ~ .x / `Total (ComTime)`)) %>% 
+  mutate(across(c("Geography":"Worked at home"), ~ ifelse(is.na(.x), 0, .x)))
+
+corr_data <- as.data.frame(cor(corr_data))
+corr_data <- corr_data %>% 
+  select(c("Median value (dollars)":"Median contract rent")) %>% 
+  mutate(overall_importance = abs(`Median value (dollars)`) + abs(Households) + abs(`Median contract rent`),
+         squared_importance = abs(`Median value (dollars)`)^0.5 + abs(Households)^0.5 + abs(`Median contract rent`)^0.5)
+
+income_vars <- corr_data %>% 
+  arrange(desc(Households)) %>% 
+  row.names()
+```
+

@@ -1,0 +1,107 @@
+---
+title: "Home and Rent Modeling"
+author: "Benjamin Allen"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(psych)
+library(corrplot)
+library(sf)
+library(maps)
+library(extrafont)
+library(plotly)
+library(scales)
+library(leaflet)
+library(leaflet.providers)
+library(fpp3)
+```
+
+### Modeling
+
+Given that the majority of the variables are proportions, it follows that these
+variables will be affected by each other, so a vector autogregression model makes
+sense.
+
+```{r}
+aggr_data <- acs_data %>%
+  index_by(year) %>% 
+  summarise(across(`Total population`:taxi_trips, sum)) %>% 
+  select(c(income_vars[1:30]))
+
+# NNETAR 1
+nn1 <- aggr_data[1:9,] %>% 
+  model(nn1 = NNETAR(Households))
+nn1 <- aggr_data[1:9,] %>% 
+  model(nn1 = NNETAR(Households ~ `White alone` + `Long-distance train` + `Worked at home` + `Total (ComType)` + `Total (ComTime)`))
+
+glance(nn1)
+nn1 %>% gg_tsresiduals()
+nfr1 <- nn1 %>% forecast(new_data = aggr_data[10:12,])
+
+MAPE(nfr1$.mean, aggr_data$Households[10:12]) - 100
+mean(abs(nfr1$.mean - aggr_data$Households[10:12]))
+
+# ARIMA Models
+arima_models <- aggr_data %>% 
+  model(ar1 = ARIMA(Households),
+        ar2 = ARIMA(Households ~ `White alone` + `Long-distance train` + `Worked at home`),
+        ar3 = ARIMA(Households ~ `White alone` + `Long-distance train`:`Total (ComTime)`),
+        ar4 = ARIMA(Households ~ `White alone` + `Long-distance train`:`Subway`),
+        ar5 = ARIMA(Households ~ `White alone`:`Bicycle`))
+
+glance(arima_models)
+ar1 %>% gg_tsresiduals()
+fr1 <- ar1 %>% forecast(new_data = aggr_data[10:12,])
+
+MAPE(fr1$.mean, aggr_data$Households[10:12]) - 100
+mean(abs(fr1$.mean - aggr_data$Households[10:12]))
+
+# ARIMA 2
+ar2 <- aggr_data %>% 
+  model(ARIMA(Households ~ `White alone` + `Long-distance train` + `Worked at home`))
+
+glance(ar2)
+ar2 %>% gg_tsresiduals()
+fr2 <- ar2 %>% forecast(new_data = aggr_data[10:12,])
+
+MAPE(fr2$.mean, aggr_data$Households[10:12]) - 100
+mean(abs(fr2$.mean - aggr_data$Households[10:12]))
+
+# ARIMA 3
+ar3 <- aggr_data %>% 
+  model(ARIMA(Households ~ `White alone` + `Long-distance train`:`Total (ComTime)`))
+
+glance(ar3)
+ar3 %>% gg_tsresiduals()
+fr3 <- ar3 %>% forecast(new_data = aggr_data[10:12,])
+
+MAPE(fr3$.mean, aggr_data$Households[10:12]) - 100
+mean(abs(fr3$.mean - aggr_data$Households[10:12]))
+
+# ARIMA 4
+ar4 <- aggr_data %>% 
+  model(ARIMA(Households ~ `White alone` + `Long-distance train`:`Subway`))
+
+glance(ar4)
+ar4 %>% gg_tsresiduals()
+fr4 <- ar4 %>% forecast(new_data = aggr_data[10:12,])
+
+MAPE(fr4$.mean, aggr_data$Households[10:12]) - 100
+mean(abs(fr4$.mean - aggr_data$Households[10:12]))
+
+# ARIMA 5
+ar5 <- aggr_data %>% 
+  model(ARIMA(Households ~ `White alone`:`Bicycle`))
+
+glance(ar5)
+ar5 %>% gg_tsresiduals()
+fr5 <- ar5 %>% forecast(new_data = aggr_data[10:12,])
+
+MAPE(fr5$.mean, aggr_data$Households[10:12]) - 100
+mean(abs(fr5$.mean - aggr_data$Households[10:12]))
+```
+

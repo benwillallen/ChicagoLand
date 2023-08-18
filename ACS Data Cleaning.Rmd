@@ -1,0 +1,1322 @@
+---
+title: "ACS Data Cleaning"
+author: "Benjamin Allen"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(psych)
+library(corrplot)
+library(sf)
+library(maps)
+library(extrafont)
+library(plotly)
+library(scales)
+library(leaflet)
+library(leaflet.providers)
+library(ragg)
+```
+
+## Summary
+
+This R file contains the code used to clean census and ACS data. Note that before
+being imported into R almost every file was pre-processed in Excel for convenience.
+
+```{r}
+# Method of Transport Data
+transport_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B08301-2023-05-11T185152.csv")
+
+# Get data in tidy format
+transport_data <- pivot_longer(transport_data, cols = c(2:length(transport_data)), names_to = "Census Tract")
+transport_data <- pivot_wider(transport_data, names_from = `Label (Grouping)`, values_from = value)
+
+# Rename columns
+colnames(transport_data) <- c("Census Tract", "Automobile Total", "Drove Alone", "Carpooled", "Public Transit Total", "Bus", "Metro", "Long-Distance Train", "Light Rail", "Ferryboat", "Taxicab", "Motorcycle", "Bicycle", "Walking", "Other", "Worked From Home")
+
+# Filter out extra text in census tract
+transport_data$`Census Tract` <- str_remove_all(transport_data$`Census Tract`, "[:alpha:]| |,|\\!")
+
+# If no decimal place append two zeros
+transport_data$`Census Tract` <- ifelse(str_detect(transport_data$`Census Tract`, "\\."), str_remove(transport_data$`Census Tract`, "\\."), paste0(transport_data$`Census Tract`, "00"))
+
+# Add leading zero
+transport_data$`Census Tract` <- ifelse(str_length(transport_data$`Census Tract`) == 5, paste0("0", transport_data$`Census Tract`), transport_data$`Census Tract`)
+
+# Add state and county digits
+transport_data$`Census Tract` <- as.numeric(paste0("17031", transport_data$`Census Tract`))
+
+# Check for null values
+sum(is.na(transport_data))
+```
+```{r}
+# Commute Times Data
+commute_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B08303-2023-05-11T185220.csv")
+
+# Get data in tidy format
+commute_data <- pivot_longer(commute_data, cols = c(2:length(commute_data)), names_to = "Census Tract")
+commute_data <- pivot_wider(commute_data, names_from = `Label (Grouping)`, values_from = value)
+
+# Filter out extra text in census tract
+commute_data$`Census Tract` <- str_remove_all(commute_data$`Census Tract`, "[:alpha:]| |,|\\!")
+
+# If no decimal place append two zeros
+commute_data$`Census Tract` <- ifelse(str_detect(commute_data$`Census Tract`, "\\."), str_remove(commute_data$`Census Tract`, "\\."), paste0(commute_data$`Census Tract`, "00"))
+
+# Add leading zero
+commute_data$`Census Tract` <- ifelse(str_length(commute_data$`Census Tract`) == 5, paste0("0", commute_data$`Census Tract`), commute_data$`Census Tract`)
+
+# Add state and county digits
+commute_data$`Census Tract` <- as.numeric(paste0("17031", commute_data$`Census Tract`))
+
+# Check for null values
+sum(is.na(commute_data))
+```
+```{r}
+# Gross Rent Data
+rent_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B25031-2023-05-11T225456.csv")
+
+# Get data in tidy format
+rent_data <- pivot_longer(rent_data, cols = c(2:length(rent_data)), names_to = "Census Tract")
+rent_data <- pivot_wider(rent_data, names_from = `Label (Grouping)`, values_from = value)
+
+# Filter out extra text in census tract
+rent_data$`Census Tract` <- str_remove_all(rent_data$`Census Tract`, "[:alpha:]| |,|\\!")
+
+# If no decimal place append two zeros
+rent_data$`Census Tract` <- ifelse(str_detect(rent_data$`Census Tract`, "\\."), str_remove(rent_data$`Census Tract`, "\\."), paste0(rent_data$`Census Tract`, "00"))
+
+# Add leading zero
+rent_data$`Census Tract` <- ifelse(str_length(rent_data$`Census Tract`) == 5, paste0("0", rent_data$`Census Tract`), rent_data$`Census Tract`)
+
+# Add state and county digits
+rent_data$`Census Tract` <- as.numeric(paste0("17031", rent_data$`Census Tract`))
+
+# Replace dashes with zero
+for (idx in c(2:8)) {
+  rent_data[[idx]] <- ifelse(rent_data[[idx]] == "-", 0, as.numeric(str_remove_all(rent_data[[idx]], ",|\\+")))
+}
+
+# Check for null values
+sum(is.na(rent_data))
+```
+```{r}
+# Median Rent Data
+mrent_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B25058-2023-05-11T225537.csv")
+
+# Replace dashes with zero
+for (idx in c(1:length(mrent_data))) {
+  if (mrent_data[idx] == "-") {
+    mrent_data[idx] <- 0
+  }
+}
+
+# Get data in tidy format
+mrent_data <- pivot_longer(mrent_data, cols = c(2:length(mrent_data)), names_to = "Census Tract")
+mrent_data <- pivot_wider(mrent_data, names_from = `Label (Grouping)`, values_from = value)
+
+# Filter out extra text in census tract
+mrent_data$`Census Tract` <- str_remove_all(mrent_data$`Census Tract`, "[:alpha:]| |,|\\!")
+
+# If no decimal place append two zeros
+mrent_data$`Census Tract` <- ifelse(str_detect(mrent_data$`Census Tract`, "\\."), str_remove(mrent_data$`Census Tract`, "\\."), paste0(mrent_data$`Census Tract`, "00"))
+
+# Add leading zero
+mrent_data$`Census Tract` <- ifelse(str_length(mrent_data$`Census Tract`) == 5, paste0("0", mrent_data$`Census Tract`), mrent_data$`Census Tract`)
+
+# Add state and county digits
+mrent_data$`Census Tract` <- as.numeric(paste0("17031", mrent_data$`Census Tract`))
+
+# Check for null values
+sum(is.na(mrent_data))
+```
+```{r}
+# Median Home Value Data
+homevalue_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B25077-2023-05-11T184111.csv")
+
+# Replace dashes with zero
+for (idx in c(1:length(homevalue_data))) {
+  if (homevalue_data[idx] == "-") {
+    homevalue_data[idx] <- 0
+  }
+}
+
+# Get data in tidy format
+homevalue_data <- pivot_longer(homevalue_data, cols = c(2:length(homevalue_data)), names_to = "Census Tract")
+homevalue_data <- pivot_wider(homevalue_data, names_from = `Label (Grouping)`, values_from = value)
+
+# Filter out extra text in census tract
+homevalue_data$`Census Tract` <- str_remove_all(homevalue_data$`Census Tract`, "[:alpha:]| |,|\\!")
+
+# If no decimal place append two zeros
+homevalue_data$`Census Tract` <- ifelse(str_detect(homevalue_data$`Census Tract`, "\\."), str_remove(homevalue_data$`Census Tract`, "\\."), paste0(homevalue_data$`Census Tract`, "00"))
+
+# Add leading zero
+homevalue_data$`Census Tract` <- ifelse(str_length(homevalue_data$`Census Tract`) == 5, paste0("0", homevalue_data$`Census Tract`), homevalue_data$`Census Tract`)
+
+# Add state and county digits
+homevalue_data$`Census Tract` <- as.numeric(paste0("17031", homevalue_data$`Census Tract`))
+
+# Check for null values
+sum(is.na(homevalue_data))
+```
+```{r}
+# Age Data
+age_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSST5Y2021.S0101-2023-05-11T225911.csv")
+
+# Get data in tidy format
+age_data <- pivot_longer(age_data, cols = c(2:length(age_data)), names_to = "Census Tract")
+age_data <- pivot_wider(age_data, names_from = `Label (Grouping)`, values_from = value)
+
+# Filter out percentages
+age_data <- filter(age_data, str_detect(age_data$`Census Tract`, "Total")) 
+
+# Filter out extra text in census tract
+age_data$`Census Tract` <- str_remove_all(age_data$`Census Tract`, "[:alpha:]| |,|\\!")
+
+# If no decimal place append two zeros
+age_data$`Census Tract` <- ifelse(str_detect(age_data$`Census Tract`, "\\."), str_remove(age_data$`Census Tract`, "\\."), paste0(age_data$`Census Tract`, "00"))
+
+# Add leading zero
+age_data$`Census Tract` <- ifelse(str_length(age_data$`Census Tract`) == 5, paste0("0", age_data$`Census Tract`), age_data$`Census Tract`)
+
+# Add state and county digits
+age_data$`Census Tract` <- as.numeric(paste0("17031", age_data$`Census Tract`))
+
+# Check for null values
+sum(is.na(age_data))
+```
+```{r}
+# Income Data
+income_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSST5Y2021.S1903-2023-05-11T192004.csv")
+
+# Get data in tidy format
+income_data <- pivot_longer(income_data, cols = c(2:length(income_data)), names_to = "Census Tract")
+income_data <- pivot_wider(income_data, names_from = `Label (Grouping)`, values_from = value)
+
+# Filter out percent incomes
+income_data <- filter(income_data, str_detect(income_data$`Census Tract`, "Median")) 
+
+# Filter out extra text in census tract
+income_data$`Census Tract` <- str_remove_all(income_data$`Census Tract`, "[:alpha:]| |,|\\!")
+income_data$`Census Tract` <- str_sub(income_data$`Census Tract`, start = 1, end = -3)
+
+# If no decimal place append two zeros
+income_data$`Census Tract` <- ifelse(str_detect(income_data$`Census Tract`, "\\."), str_remove(income_data$`Census Tract`, "\\."), paste0(income_data$`Census Tract`, "00"))
+
+# Add leading zero
+income_data$`Census Tract` <- ifelse(str_length(income_data$`Census Tract`) == 5, paste0("0", income_data$`Census Tract`), income_data$`Census Tract`)
+
+# Add state and county digits
+income_data$`Census Tract` <- as.numeric(paste0("17031", income_data$`Census Tract`))
+
+# Check for null values
+sum(is.na(income_data))
+```
+```{r}
+# Race Data
+race_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/DECENNIALPL2020.P1-2023-05-11T190224.csv")
+
+# Get data in tidy format
+race_data <- pivot_longer(race_data, cols = c(2:length(race_data)), names_to = "Census Tract")
+race_data <- pivot_wider(race_data, names_from = `Label (Grouping)`, values_from = value)
+
+# Filter out extra text in census tract
+race_data$`Census Tract` <- str_remove_all(race_data$`Census Tract`, "[:alpha:]| |,|\\!")
+
+# If no decimal place append two zeros
+race_data$`Census Tract` <- ifelse(str_detect(race_data$`Census Tract`, "\\."), str_remove(race_data$`Census Tract`, "\\."), paste0(race_data$`Census Tract`, "00"))
+
+# Add leading zero
+race_data$`Census Tract` <- ifelse(str_length(race_data$`Census Tract`) == 5, paste0("0", race_data$`Census Tract`), race_data$`Census Tract`)
+
+# Add state and county digits
+race_data$`Census Tract` <- as.numeric(paste0("17031", race_data$`Census Tract`))
+
+# Check for null values
+sum(is.na(race_data))
+```
+```{r}
+# Taxi Trip Data
+taxi_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/annual_tract_taxi_trips.csv")
+
+# Rename columns
+colnames(taxi_data) <- c("year", "Census Tract", "taxi_trips")
+
+# Take only 2021 data
+taxi_data <- taxi_data %>% 
+  filter(year == 2021)
+```
+
+## Joining data
+
+Now that all the data is in the same format and segmented on census tracts, it is
+easy to join the data into a single data set for further analysis.
+
+```{r}
+acs_data <- age_data %>%
+  inner_join(commute_data, by = join_by(`Census Tract`)) %>%
+  inner_join(homevalue_data, by = join_by(`Census Tract`)) %>%
+  inner_join(income_data, by = join_by(`Census Tract`)) %>%
+  inner_join(mrent_data, by = join_by(`Census Tract`)) %>%
+  inner_join(race_data, by = join_by(`Census Tract`)) %>%
+  inner_join(rent_data, by = join_by(`Census Tract`)) %>%
+  inner_join(transport_data, by = join_by(`Census Tract`)) %>% 
+  left_join(taxi_data, by = join_by(`Census Tract`))
+
+acs_data$year <- 2021
+acs_data$taxi_trips <- ifelse(is.na(acs_data$taxi_trips), 0, acs_data$taxi_trips)
+```
+
+We can also join this data set on shapefile data to make geospatial visualization easy.
+
+## Data Visualizations
+
+```{r}
+# Illinois Census Tract Data
+geo_data <- read_sf("C:/Users/Norpotatos/Downloads/tl_2020_17_tract.shp")
+geo_data <- subset(geo_data, select = c("GEOID", "geometry"))
+geo_data$GEOID <- as.double(geo_data$GEOID)
+acs_data <- left_join(acs_data, geo_data, by = c("Census Tract" = "GEOID"))
+
+# Metro Station Data
+metro_data <- read_sf("C:/Users/Norpotatos/Downloads/Metra_Stations/MetraStations.shp")
+metro_data <- st_cast(metro_data, "POINT")
+metro_data <- st_transform(metro_data, crs = 4269)
+
+# Bus Stop Data
+bus_data <- read_sf("C:/Users/Norpotatos/Downloads/CTA_BusStops/CTA_BusStops.shp")
+bus_data <- st_transform(bus_data, crs = 4269)
+```
+
+### Map of Rent Distribution
+
+# TEMP MAP CODE
+```{r}
+map.theme <- theme(axis.line=element_blank(),axis.text.x=element_blank(),
+                   axis.text.y=element_blank(),axis.ticks=element_blank(),
+                   axis.title.x=element_blank(), axis.title.y=element_blank(),
+                   panel.background=element_blank(), panel.border=element_blank(),
+                   panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+                   plot.background=element_blank())
+
+us_map <- st_as_sf(map("usa", plot = FALSE, fill = TRUE))
+rent_plot <- ggplot(data = acs_data) +
+  geom_sf(data = us_map, fill = "gray15", color = "black") +
+  geom_sf(data = geo_data, aes(geometry = geometry), fill = NA, color = "gray8") +
+  geom_sf(mapping = aes(fill = `Median contract rent`, geometry = geometry,
+                        text = paste("Tract #:", `Census Tract`)), color = "gray8") +
+  scale_fill_gradient(low = "#152236", high = "chartreuse", label = dollar_format()) +
+  coord_sf(xlim = c(-88.3, -87.5), ylim = c(41.4, 42.2)) + 
+  theme_dark() + map.theme +
+  theme(plot.background = element_rect(fill = "gray8"),
+        panel.background = element_rect(fill = "#152236"),
+        legend.background = element_rect(fill = "gray8"),
+        legend.key.height = unit(1.5, "cm"),
+        text = element_text(color="#fff0d5", size=16),
+        plot.title = element_text(size=30),
+        strip.text = element_text(color="#fff0d5", size=16),
+        plot.margin = margin(25, 25, 25, 25))
+rent_plot
+ggplotly(rent_plot)
+```
+
+```{r}
+# Data Set Up
+rent_qu_data <- acs_data %>%
+  select(c("Census Tract", "Median contract rent", "Median Gross Rent":"5 or more bedrooms", "geometry")) %>%
+  pivot_longer(cols=c("Median contract rent", "Median Gross Rent":"5 or more bedrooms"), names_to = "rent_type") %>% 
+  filter(`Census Tract` != 17031990000)
+
+rent_qu_data$rent_type <- ifelse(rent_qu_data$rent_type == "Median Gross Rent", "Median gross rent", rent_qu_data$rent_type)
+
+rent_qu_data <- st_as_sf(rent_qu_data, sf_column_name = "geometry")
+
+# Palette and Label Setup
+pal1 <- colorNumeric("PuRd", domain = c(1, 3500), na.color = "white")
+labels1 <- sprintf("<strong>Tract %s</strong><br/>Median Rent: $%g",
+  rent_qu_data[rent_qu_data$rent_type == "Median contract rent",]$`Census Tract`,
+  rent_qu_data[rent_qu_data$rent_type == "Median contract rent",]$value
+) %>% lapply(htmltools::HTML)
+
+labels2 <- sprintf("<strong>Tract %s</strong><br/>Median Rent: $%g",
+  rent_qu_data[rent_qu_data$rent_type == "Median gross rent",]$`Census Tract`,
+  rent_qu_data[rent_qu_data$rent_type == "Median gross rent",]$value
+) %>% lapply(htmltools::HTML)
+
+labels3 <- sprintf("<strong>Tract %s</strong><br/>Median Rent: $%g",
+  rent_qu_data[rent_qu_data$rent_type == "No bedroom",]$`Census Tract`,
+  rent_qu_data[rent_qu_data$rent_type == "No bedroom",]$value
+) %>% lapply(htmltools::HTML)
+
+labels4 <- sprintf("<strong>Tract %s</strong><br/>Median Rent: $%g",
+  rent_qu_data[rent_qu_data$rent_type == "1 bedroom",]$`Census Tract`,
+  rent_qu_data[rent_qu_data$rent_type == "1 bedroom",]$value
+) %>% lapply(htmltools::HTML)
+
+labels5 <- sprintf("<strong>Tract %s</strong><br/>Median Rent: $%g",
+  rent_qu_data[rent_qu_data$rent_type == "2 bedrooms",]$`Census Tract`,
+  rent_qu_data[rent_qu_data$rent_type == "2 bedrooms",]$value
+) %>% lapply(htmltools::HTML)
+
+labels6 <- sprintf("<strong>Tract %s</strong><br/>Median Rent: $%g",
+  rent_qu_data[rent_qu_data$rent_type == "3 bedrooms",]$`Census Tract`,
+  rent_qu_data[rent_qu_data$rent_type == "3 bedrooms",]$value
+) %>% lapply(htmltools::HTML)
+
+labels7 <- sprintf("<strong>Tract %s</strong><br/>Median Rent: $%g",
+  rent_qu_data[rent_qu_data$rent_type == "4 bedrooms",]$`Census Tract`,
+  rent_qu_data[rent_qu_data$rent_type == "4 bedrooms",]$value
+) %>% lapply(htmltools::HTML)
+
+labels8 <- sprintf("<strong>Tract %s</strong><br/>Median Rent: $%g",
+  rent_qu_data[rent_qu_data$rent_type == "5 or more bedrooms",]$`Census Tract`,
+  rent_qu_data[rent_qu_data$rent_type == "5 or more bedrooms",]$value
+) %>% lapply(htmltools::HTML)
+```
+
+```{r warning=FALSE}
+rent_inter_plot <- leaflet(data = rent_qu_data) %>%
+  setView(-87.9, 41.8, 10) %>%
+  addTiles() %>%
+  addPolygons(data = rent_qu_data[rent_qu_data$rent_type == "Median contract rent",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Median contract rent",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels1,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLegend(pal = pal1, values = ~value, opacity = 0.7, title = "Median Rent (US$)",
+            position = "bottomright", group = "Median contract rent") %>% 
+  addPolygons(data = rent_qu_data[rent_qu_data$rent_type == "Median gross rent",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Median gross rent",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels2,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = rent_qu_data[rent_qu_data$rent_type == "No bedroom",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "No bedroom",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels3,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = rent_qu_data[rent_qu_data$rent_type == "1 bedroom",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "1 bedroom",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels4,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = rent_qu_data[rent_qu_data$rent_type == "2 bedrooms",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "2 bedrooms",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels5,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = rent_qu_data[rent_qu_data$rent_type == "3 bedrooms",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "3 bedrooms",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels6,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = rent_qu_data[rent_qu_data$rent_type == "4 bedrooms",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "4 bedrooms",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels7,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = rent_qu_data[rent_qu_data$rent_type == "5 or more bedrooms",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "5 or more bedrooms",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels8,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLayersControl(
+    baseGroups = unique(rent_qu_data$rent_type),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+rent_inter_plot
+```
+
+### Map of Transportation Category Distribution
+
+```{r warning=FALSE}
+# Data Set Up
+commute_qu_data <- acs_data %>%
+  select(c("Census Tract", "Automobile Total":"geometry")) %>%
+  pivot_longer(cols=c("Automobile Total":"Worked From Home"), names_to = "transport_type") %>% 
+  filter(`Census Tract` != 17031990000)
+
+commute_qu_data <- st_as_sf(commute_qu_data, sf_column_name = "geometry")
+
+# Palette and Label Set Up
+pal1 <- colorBin("YlGnBu", domain = c(1, 4000), bins = c(1, 10, 25, 50, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000),
+                 na.color = "#ffb5b5")
+labels1 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Automobile Total",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Automobile Total",]$value
+) %>% lapply(htmltools::HTML)
+
+labels2 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Public Transit Total",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Public Transit Total",]$value
+) %>% lapply(htmltools::HTML)
+
+labels3 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Drove Alone",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Drove Alone",]$value
+) %>% lapply(htmltools::HTML)
+
+labels4 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Carpooled",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Carpooled",]$value
+) %>% lapply(htmltools::HTML)
+
+labels5 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Motorcycle",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Motorcycle",]$value
+) %>% lapply(htmltools::HTML)
+
+labels6 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Taxicab",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Taxicab",]$value
+) %>% lapply(htmltools::HTML)
+
+labels7 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Bus",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Bus",]$value
+) %>% lapply(htmltools::HTML)
+
+labels8 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Metro",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Metro",]$value
+) %>% lapply(htmltools::HTML)
+
+labels9 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Long-Distance Train",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Long-Distance Train",]$value
+) %>% lapply(htmltools::HTML)
+
+labels10 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Light Rail",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Light Rail",]$value
+) %>% lapply(htmltools::HTML)
+
+labels11 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Ferryboat",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Ferryboat",]$value
+) %>% lapply(htmltools::HTML)
+
+labels12 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Bicycle",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Bicycle",]$value
+) %>% lapply(htmltools::HTML)
+
+labels13 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Walking",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Walking",]$value
+) %>% lapply(htmltools::HTML)
+
+labels14 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Other",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Other",]$value
+) %>% lapply(htmltools::HTML)
+
+labels15 <- sprintf(
+  "<strong>Tract %s</strong><br/>%g people",
+  commute_qu_data[commute_qu_data$transport_type == "Worked From Home",]$`Census Tract`, commute_qu_data[commute_qu_data$transport_type == "Worked From Home",]$value
+) %>% lapply(htmltools::HTML)
+
+labels_bus <- sprintf("<strong>Bus Stop</strong><br/>%s", bus_data$PUBLIC_NAM) %>% lapply(htmltools::HTML)
+
+labels_metro <- sprintf("<strong>Metro Station</strong><br/>%s", metro_data$NAME) %>% lapply(htmltools::HTML)
+```
+
+```{r warning=FALSE}
+commute_inter_plot <- leaflet(data = commute_qu_data) %>%
+  setView(-87.9, 41.8, 10) %>%
+  addTiles() %>%
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Automobile Total",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Automobile Total",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels1,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLegend(pal = pal1, values = ~value, opacity = 0.7, title = NULL,
+            position = "bottomright", group = "Automobile Total") %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Public Transit Total",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Public Transit Total",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels2,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Drove Alone",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Drove Alone",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels3,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Carpooled",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Carpooled",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels4,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Motorcycle",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Motorcycle",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels5,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Taxicab",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Taxicab",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels6,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Bus",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Bus",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels7,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addMarkers(data = bus_data, clusterOptions = markerClusterOptions(), label = labels_bus,
+             popup = labels_bus, group = "Bus") %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Metro",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Metro",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels8,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addMarkers(data = metro_data, clusterOptions = markerClusterOptions(), label = labels_metro,
+             popup = labels_metro, group = "Metro") %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Long-Distance Train",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Long-Distance Train",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels9,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Light Rail",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Light Rail",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels10,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Ferryboat",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Ferryboat",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels11,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Bicycle",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Bicycle",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels12,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Walking",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Walking",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels13,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Other",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Other",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels14,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = commute_qu_data[commute_qu_data$transport_type == "Worked From Home",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Worked From Home",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels15,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLayersControl(
+    baseGroups = unique(commute_qu_data$transport_type),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+commute_inter_plot
+```
+
+### Map of Commute Times by Tract
+
+```{r}
+# Data Set Up
+comtime_qu_data <- acs_data %>%
+  mutate(`Less than 14 minutes` = `Less than 5 minutes` + `5 to 9 minutes` + `10 to 14 minutes`,
+         `15 to 24 minutes` = `15 to 19 minutes` + `20 to 24 minutes`,
+         `25 to 34 minutes` = `25 to 29 minutes` + `30 to 34 minutes`,
+         `35 to 59 minutes` = `35 to 39 minutes` + `40 to 44 minutes` + `45 to 59 minutes`) %>% 
+  select(c("Census Tract", "60 to 89 minutes":"90 or more minutes", "Less than 14 minutes":"35 to 59 minutes", "geometry")) %>%
+  pivot_longer(cols=c("60 to 89 minutes":"90 or more minutes", "Less than 14 minutes":"35 to 59 minutes"), names_to = "duration") %>% 
+  filter(`Census Tract` != 17031990000)
+
+comtime_qu_data <- st_as_sf(comtime_qu_data, sf_column_name = "geometry")
+
+# Palette and Label Setup
+pal1 <- colorBin("YlOrRd", domain = c(1, 5000), bins = c(1, 50, 100, 250, 500, 1000, 2000, 3000), na.color = "white")
+  
+labels1 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  comtime_qu_data[comtime_qu_data$duration == "Less than 14 minutes",]$`Census Tract`,
+  comtime_qu_data[comtime_qu_data$duration == "Less than 14 minutes",]$value
+) %>% lapply(htmltools::HTML)
+
+labels2 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  comtime_qu_data[comtime_qu_data$duration == "15 to 24 minutes",]$`Census Tract`,
+  comtime_qu_data[comtime_qu_data$duration == "15 to 24 minutes",]$value
+) %>% lapply(htmltools::HTML)
+
+labels3 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  comtime_qu_data[comtime_qu_data$duration == "25 to 34 minutes",]$`Census Tract`,
+  comtime_qu_data[comtime_qu_data$duration == "25 to 34 minutes",]$value
+) %>% lapply(htmltools::HTML)
+
+labels4 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  comtime_qu_data[comtime_qu_data$duration == "35 to 59 minutes",]$`Census Tract`,
+  comtime_qu_data[comtime_qu_data$duration == "35 to 59 minutes",]$value
+) %>% lapply(htmltools::HTML)
+
+labels5 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  comtime_qu_data[comtime_qu_data$duration == "60 to 89 minutes",]$`Census Tract`,
+  comtime_qu_data[comtime_qu_data$duration == "60 to 89 minutes",]$value
+) %>% lapply(htmltools::HTML)
+
+labels6 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  comtime_qu_data[comtime_qu_data$duration == "90 or more minutes",]$`Census Tract`,
+  comtime_qu_data[comtime_qu_data$duration == "90 or more minutes",]$value
+) %>% lapply(htmltools::HTML)
+```
+
+```{r warning=FALSE}
+comtime_inter_plot <- leaflet(data = comtime_qu_data) %>%
+  setView(-87.9, 41.8, 10) %>%
+  addTiles() %>%
+  addPolygons(data = comtime_qu_data[comtime_qu_data$duration == "Less than 14 minutes",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Less than 14 minutes",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels1,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLegend(pal = pal1, values = ~value, opacity = 0.7, title = "Number of Commuters",
+            position = "bottomright", group = "Less than 14 minutes") %>% 
+  addPolygons(data = comtime_qu_data[comtime_qu_data$duration == "15 to 24 minutes",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "15 to 24 minutes",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels2,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = comtime_qu_data[comtime_qu_data$duration == "25 to 34 minutes",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "25 to 34 minutes",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels3,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = comtime_qu_data[comtime_qu_data$duration == "35 to 59 minutes",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "35 to 59 minutes",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels4,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = comtime_qu_data[comtime_qu_data$duration == "60 to 89 minutes",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "60 to 89 minutes",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels5,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = comtime_qu_data[comtime_qu_data$duration == "90 or more minutes",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "90 or more minutes",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels6,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLayersControl(
+    baseGroups = c("Less than 14 minutes", "15 to 24 minutes", "25 to 34 minutes",
+                   "35 to 59 minutes", "60 to 89 minutes", "90 or more minutes"),
+    options = layersControlOptions(collapsed = FALSE)
+    )
+comtime_inter_plot
+```
+
+### Map of Age Distribution
+
+```{r}
+# Data Set Up
+age_qu_data <- acs_data %>%
+  mutate(`total_population` = `Under 5 years` + `5 to 9 years` + `10 to 14 years` +
+           `15 to 19 years` + `20 to 24 years` + `25 to 29 years` + `30 to 34 years` +
+           `35 to 39 years` + `40 to 44 years` + `45 to 49 years` + `50 to 54 years` +
+           `55 to 59 years` + `60 to 64 years` + `65 to 69 years` + `70 to 74 years` +
+           `75 to 79 years` + `80 to 84 years` + `85 years and over`) %>% 
+  mutate(`14 years and under` = (`Under 5 years` + `5 to 9 years` + `10 to 14 years`) / total_population,
+         `15 to 29 years` = (`15 to 19 years` + `20 to 24 years` + `25 to 29 years`) / total_population,
+         `30 to 44 years` = (`30 to 34 years` + `35 to 39 years` + `40 to 44 years`) / total_population,
+         `45 to 59 years` = (`45 to 49 years` + `50 to 54 years` + `55 to 59 years`) / total_population,
+         `60 years and over` = (`60 to 64 years` + `65 to 69 years` + `70 to 74 years` + `75 to 79 years` + `80 to 84 years` +
+           `85 years and over`) / total_population) %>% 
+  select(c("Census Tract", "14 years and under":"60 years and over", "geometry")) %>%
+  pivot_longer(cols=c("14 years and under":"60 years and over"), names_to = "age") %>% 
+  filter(`Census Tract` != 17031990000)
+  
+
+age_qu_data <- st_as_sf(age_qu_data, sf_column_name = "geometry")
+
+# Palette and Label Setup
+pal1 <- colorBin("GnBu", domain = c(1, 5000), bins = c(1, 50, 100, 500, 1000, 2000, 3000, 4000, 5000), na.color = "white")
+
+pal1 <- colorBin("GnBu", domain = c(0, 1), bins = c(0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7, 1))
+  
+labels1 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  age_qu_data[age_qu_data$age == "14 years and under",]$`Census Tract`,
+  age_qu_data[age_qu_data$age == "14 years and under",]$value
+) %>% lapply(htmltools::HTML)
+
+labels2 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  age_qu_data[age_qu_data$age == "15 to 29 years",]$`Census Tract`,
+  age_qu_data[age_qu_data$age == "15 to 29 years",]$value
+) %>% lapply(htmltools::HTML)
+
+labels3 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  age_qu_data[age_qu_data$age == "30 to 44 years",]$`Census Tract`,
+  age_qu_data[age_qu_data$age == "30 to 44 years",]$value
+) %>% lapply(htmltools::HTML)
+
+labels4 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  age_qu_data[age_qu_data$age == "45 to 59 years",]$`Census Tract`,
+  age_qu_data[age_qu_data$age == "45 to 59 years",]$value
+) %>% lapply(htmltools::HTML)
+
+labels5 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  age_qu_data[age_qu_data$age == "60 years and over",]$`Census Tract`,
+  age_qu_data[age_qu_data$age == "60 years and over",]$value
+) %>% lapply(htmltools::HTML)
+```
+
+```{r warning=FALSE}
+age_inter_plot <- leaflet(data = age_qu_data) %>%
+  setView(-87.9, 41.8, 10) %>%
+  addTiles() %>%
+  addPolygons(data = age_qu_data[age_qu_data$age == "14 years and under",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "14 years and under",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels1,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLegend(pal = pal1, values = ~value, opacity = 0.7, title = "Population",
+            position = "bottomright", group = "14 years and under") %>% 
+  addPolygons(data = age_qu_data[age_qu_data$age == "15 to 29 years",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "15 to 29 years",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels2,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>%
+  addPolygons(data = age_qu_data[age_qu_data$age == "30 to 44 years",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "30 to 44 years",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels3,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>%
+  addPolygons(data = age_qu_data[age_qu_data$age == "45 to 59 years",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "45 to 59 years",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels4,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>%
+  addPolygons(data = age_qu_data[age_qu_data$age == "60 years and over",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "60 years and over",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels5,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>%
+  addLayersControl(
+    baseGroups = unique(age_qu_data$age),
+    options = layersControlOptions(collapsed = FALSE)
+    )
+age_inter_plot
+```
+
+### Map of Race Distribution
+
+```{r}
+# Data Set Up
+race_qu_data <- acs_data %>%
+  select(c("Census Tract", "White alone":"Population of two or more races:", "geometry")) %>%
+  pivot_longer(cols=c("White alone":"Population of two or more races:"), names_to = "race") %>% 
+  filter(`Census Tract` != 17031990000)
+
+race_qu_data$race <- ifelse(race_qu_data$race == "Population of two or more races:", "Two or more races", race_qu_data$race)
+
+race_qu_data <- st_as_sf(race_qu_data, sf_column_name = "geometry")
+
+# Palette and Label Setup
+pal1 <- colorBin("magma", domain = c(1, 10000), bins = c(1, 50, 100, 500, 1000, 2000, 4000, 6000, 8000, 10000), na.color = "white",
+                 reverse = TRUE)
+  
+labels1 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  race_qu_data[race_qu_data$race == "White alone",]$`Census Tract`,
+  race_qu_data[race_qu_data$race == "White alone",]$value
+) %>% lapply(htmltools::HTML)
+
+labels2 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  race_qu_data[race_qu_data$race == "Black or African American alone",]$`Census Tract`,
+  race_qu_data[race_qu_data$race == "Black or African American alone",]$value
+) %>% lapply(htmltools::HTML)
+
+labels3 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  race_qu_data[race_qu_data$race == "American Indian and Alaska Native alone",]$`Census Tract`,
+  race_qu_data[race_qu_data$race == "American Indian and Alaska Native alone",]$value
+) %>% lapply(htmltools::HTML)
+
+labels4 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  race_qu_data[race_qu_data$race == "Asian alone",]$`Census Tract`,
+  race_qu_data[race_qu_data$race == "Asian alone",]$value
+) %>% lapply(htmltools::HTML)
+
+labels5 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  race_qu_data[race_qu_data$race == "Native Hawaiian and Other Pacific Islander alone",]$`Census Tract`,
+  race_qu_data[race_qu_data$race == "Native Hawaiian and Other Pacific Islander alone",]$value
+) %>% lapply(htmltools::HTML)
+
+labels6 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  race_qu_data[race_qu_data$race == "Some Other Race alone",]$`Census Tract`,
+  race_qu_data[race_qu_data$race == "Some Other Race alone",]$value
+) %>% lapply(htmltools::HTML)
+
+labels7 <- sprintf("<strong>Tract %s</strong><br/>%g people",
+  race_qu_data[race_qu_data$race == "Two or more races",]$`Census Tract`,
+  race_qu_data[race_qu_data$race == "Two or more races",]$value
+) %>% lapply(htmltools::HTML)
+```
+
+```{r warning=FALSE}
+race_inter_plot <- leaflet(data = race_qu_data) %>%
+  setView(-87.9, 41.8, 10) %>%
+  addTiles() %>%
+  addPolygons(data = race_qu_data[race_qu_data$race == "White alone",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "White alone",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels1,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLegend(pal = pal1, values = ~value, opacity = 0.7, title = "Population",
+            position = "bottomright", group = "White alone") %>% 
+  addPolygons(data = race_qu_data[race_qu_data$race == "Black or African American alone",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Black or African American alone",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels2,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = race_qu_data[race_qu_data$race == "American Indian and Alaska Native alone",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "American Indian and Alaska Native alone",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels3,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = race_qu_data[race_qu_data$race == "Asian alone",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Asian alone",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels4,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = race_qu_data[race_qu_data$race == "Native Hawaiian and Other Pacific Islander alone",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Native Hawaiian and Other Pacific Islander alone",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels5,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = race_qu_data[race_qu_data$race == "Some Other Race alone",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Some Other Race alone",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels6,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addPolygons(data = race_qu_data[race_qu_data$race == "Two or more races",],
+              fillColor = ~pal1(value), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              group = "Two or more races",
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels7,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLayersControl(
+    baseGroups = unique(race_qu_data$race),
+    options = layersControlOptions(collapsed = FALSE)
+    )
+race_inter_plot
+```
+
+### Map of Income Distribution
+
+```{r}
+# Data Set Up
+income_qu_data <- acs_data %>%
+  select(c("Census Tract", "Households", "geometry")) %>%
+  filter(`Census Tract` != 17031990000)
+
+income_qu_data <- st_as_sf(income_qu_data, sf_column_name = "geometry")
+
+# Palette and Label Setup
+pal1 <- colorNumeric("inferno", domain = c(1, 250000), na.color = "#ffb5b5", reverse = TRUE)
+  
+labels1 <- sprintf("<strong>Tract %s</strong><br/>$%g",
+  income_qu_data$`Census Tract`, income_qu_data$Households) %>% lapply(htmltools::HTML)
+```
+
+```{r warning=FALSE}
+income_inter_plot <- leaflet(data = income_qu_data) %>%
+  setView(-87.9, 41.8, 10) %>%
+  addTiles() %>%
+  addPolygons(data = income_qu_data,
+              fillColor = ~pal1(Households), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels1,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLegend(pal = pal1, values = ~Households, opacity = 0.7, title = "Median Income (US$)",
+            position = "bottomright")
+income_inter_plot
+```
+
+### Map of Home Value Distribution
+
+```{r}
+# Data Set Up
+home_qu_data <- acs_data %>%
+  select(c("Census Tract", "Median value (dollars)", "geometry")) %>%
+  filter(`Census Tract` != 17031990000)
+
+home_qu_data <- st_as_sf(home_qu_data, sf_column_name = "geometry")
+
+# Palette and Label Setup
+pal1 <- colorBin("RdPu", domain = c(1, 1500000), na.color = "white",
+                 bins = c(1, 25000, 50000, 100000, 200000, 300000, 400000, 600000, 800000, 1000000, 1500000))
+  
+labels1 <- sprintf("<strong>Tract %s</strong><br/>Median Home Value: $%g",
+  home_qu_data$`Census Tract`, home_qu_data$`Median value (dollars)`) %>% lapply(htmltools::HTML)
+```
+
+```{r warning=FALSE}
+home_inter_plot <- leaflet(data = home_qu_data) %>%
+  setView(-87.9, 41.8, 10) %>%
+  addTiles() %>%
+  addPolygons(data = home_qu_data,
+              fillColor = ~pal1(`Median value (dollars)`), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels1,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLegend(pal = pal1, values = ~`Median value (dollars)`, opacity = 0.7, title = "Median Home Value (US$)",
+            position = "bottomright")
+home_inter_plot
+```
+
+### Map of Taxi Trips
+
+```{r}
+# Data Set Up
+taxi_qu_data <- acs_data %>%
+  select(c("Census Tract", "taxi_trips", "geometry")) %>%
+  filter(`Census Tract` != 17031990000)
+
+taxi_qu_data <- st_as_sf(taxi_qu_data, sf_column_name = "geometry")
+
+# Palette and Label Setup
+pal1 <- colorBin("inferno", domain = c(1, 120000), na.color = "white",
+                 bins = c(1, 10, 25, 50, 100, 150, 250, 500, 1000, 2500, 5000, 15000, 30000, 60000, 120000))
+  
+labels1 <- sprintf("<strong>Tract %s</strong><br/>%g trips",
+  taxi_qu_data$`Census Tract`, taxi_qu_data$taxi_trips) %>% lapply(htmltools::HTML)
+```
+
+```{r warning=FALSE}
+taxi_inter_plot <- leaflet(data = taxi_qu_data) %>%
+  setView(-87.9, 41.8, 10) %>%
+  addTiles() %>%
+  addPolygons(data = taxi_qu_data,
+              fillColor = ~pal1(taxi_trips), weight = 1, opacity = 0.8,
+              color = "white", fillOpacity = 0.7,
+              highlightOptions = highlightOptions(
+              weight = 4, color = "gray10", fillOpacity = 1, opacity = 1,
+              bringToFront = TRUE),
+              label = labels1,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px", direction = "auto")) %>% 
+  addLegend(pal = pal1, values = ~taxi_trips, opacity = 0.7, title = "Number of Taxi Trips",
+            position = "bottomright")
+taxi_inter_plot
+```
+
+### Correlation Plots
+
+```{r}
+corr_data <- acs_data %>% 
+  select(c("Median value (dollars)", "Households", "Median contract rent", "White alone", "Black or African American alone",
+           "American Indian and Alaska Native alone", "Asian alone", "Native Hawaiian and Other Pacific Islander alone",
+           "Some Other Race alone", "Population of two or more races:"))
+  
+colnames(corr_data) <- c("Median value (dollars)", "Households", "Median contract rent", "White", "Black", "Native American", "Asian", "Pacific Islander",
+                         "Other", "Mixed Race")
+
+corrplot(cor(corr_data), method = "number")
+
+corr2_data <- acs_data %>% 
+  select(c("Median value (dollars)", "Households", "Median contract rent", "Automobile Total", "Drove Alone",
+           "Carpooled", "Public Transit Total", "Bus", "Metro", "Long-Distance Train",
+           "Light Rail", "Ferryboat", "Taxicab", "Motorcycle", "Bicycle", "Walking",
+           "Other", "Worked From Home"))
+
+corrplot(cor(corr2_data), method = "number")
+```
+
+### Distribution Plots
+
+```{r}
+# Home Values
+home_dist_plot <- ggplot(data = acs_data) +
+  geom_histogram(mapping = aes(`Median value (dollars)`), size = 1, col = "royalblue4", fill = "royalblue", alpha = 0.5) +
+  labs(title = "Distribution of Median Home Values in Cook County",
+       subtitle = "Data by census tract from 2021", y = "Number of Tracts") +
+  theme_bw()
+home_dist_plot
+
+# Rent
+rent_dist_plot <- ggplot(data = acs_data) +
+  geom_histogram(mapping = aes(`Median contract rent`), size = 1, col = "firebrick4", fill = "firebrick", alpha = 0.5) +
+  labs(title = "Distribution of Median Rent Amounts in Cook County",
+       subtitle = "Data by census tract from 2021", y = "Number of Tracts") +
+  theme_bw()
+rent_dist_plot
+
+# Household Income
+income_dist_plot <- ggplot(data = acs_data) +
+  geom_histogram(mapping = aes(`Households`), size = 1, col = "chartreuse4", fill = "chartreuse3", alpha = 0.5) +
+  labs(title = "Distribution of Median Household Income in Cook County",
+       subtitle = "Data by census tract from 2021", y = "Number of Tracts") +
+  theme_bw()
+income_dist_plot
+```
+
+
+Visualizations To Make:
+1. Interactive Maps for Demographics - Done
+2. Correlation Plots
+3. Line Plot Showing Change in Transportation Options Over Time - Done
+4. Line Plot Showing Change in Rent, Home Prices, and Income Over Time - Done
+5. Interactive Maps Showing Geographic Correlations
+6. Distribution Plots of Rent, Home Prices, and Income - Done
+7. Plots to Explain Vector Autoregression Model
+8. Map of Taxi Trips - Done
+9. Add to Commute Interactive Map with Bus and Metro Stations - Done
+10. Maps of Home Values and Incomes - Done
+

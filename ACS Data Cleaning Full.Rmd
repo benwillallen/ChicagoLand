@@ -1,0 +1,282 @@
+---
+title: "ACS Data Cleaning"
+author: "Benjamin Allen"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(psych)
+library(corrplot)
+library(sf)
+library(maps)
+library(extrafont)
+library(plotly)
+library(scales)
+library(leaflet)
+library(leaflet.providers)
+library(ragg)
+library(tsibble)
+```
+
+## Summary
+
+This R file contains the code used to clean ACS data.
+
+```{r warning=FALSE, echo=FALSE}
+# Import Age Data
+
+# From 2010 to 2016 age data is reported as proportion
+age_data <- data.frame()
+for (iter in seq(10, 16)) {
+  path <- paste0("Data/ACS and Census Data/Age 2010-2021/ACSST5Y20", iter, ".S0101-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  # Data cleaning
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("C01_00[1-9]|C01_01[1-9]")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    mutate(across(Geography:`85 years and over`, as.numeric)) %>% # Convert proportion to count
+    mutate(across(Geography:`85 years and over`, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(across(`Under 5 years`:`85 years and over`, ~ as.integer(.x * `Total population` / 100))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  age_data <- bind_rows(age_data, new_data)
+}
+
+# From 2017 to 2021 age data is reported as counts
+for (iter in seq(17, 21)) {
+  path <- paste0("Data/ACS and Census Data/Age 2010-2021/ACSST5Y20", iter, ".S0101-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("C01_00[1-9]|C01_01[1-9]")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    mutate(across(Geography:`85 years and over`, as.numeric)) %>% 
+    mutate(across(Geography:`85 years and over`, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  age_data <- bind_rows(age_data, new_data)
+}
+```
+
+```{r}
+# Import Commute Time Data
+comtime_data <- data.frame()
+for (iter in seq(10, 21)) {
+  path <- paste0("Data/ACS and Census Data/Commute Times 2010-2021/ACSDT5Y20", iter, ".B08303-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("B08303_00[1-9]|B08303_01[0-9]")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    mutate(across(Geography:`90 or more minutes`, as.numeric)) %>% 
+    mutate(across(Geography:`90 or more minutes`, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  comtime_data <- bind_rows(comtime_data, new_data)
+}
+
+# Fix bug with total count
+comtime_data <- comtime_data %>% 
+  mutate(Total = ifelse(is.na(Total), `Total:`, Total)) %>% 
+  select(-`Total:`) %>% 
+  rename(`Total (ComTime)` = Total)
+```
+
+```{r}
+# Import Commute Type Data
+comtype_data <- data.frame()
+for (iter in seq(10, 18)) {
+  path <- paste0("Data/ACS and Census Data/Commute Types 2010-2021/ACSDT5Y20", iter, ".B08301-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("B08301_0[0-2][1-9]")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% rename(Bus = `Bus or trolley bus`, Subway = `Subway or elevated`, `Long-distance train` = Railroad,
+                         `Light rail` = `Streetcar or trolley car (carro publico in Puerto Rico)`) %>% 
+    mutate(across(Geography:`Worked at home`, as.numeric)) %>% 
+    mutate(across(Geography:`Worked at home`, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  comtype_data <- bind_rows(comtype_data, new_data)
+}
+
+# From 2019 to 2021 'Worked from home' is used instead of 'Worked at home'
+for (iter in seq(19, 21)) {
+  path <- paste0("Data/ACS and Census Data/Commute Types 2010-2021/ACSDT5Y20", iter, ".B08301-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("B08301_0[0-2][1-9]")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    rename(`Worked at home` = `Worked from home`, Total = `Total:`, `Car, truck, or van` = `Car, truck, or van:`,
+           Carpooled = `Carpooled:`, Subway = `Subway or elevated rail`,
+           `Long-distance train` = `Long-distance train or commuter rail`) %>% 
+    rename_with(~"Light rail", 14) %>% 
+    mutate(across(Geography:`Worked at home`, as.numeric)) %>% 
+    mutate(across(Geography:`Worked at home`, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  comtype_data <- bind_rows(comtype_data, new_data)
+}
+
+comtype_data <- comtype_data %>%
+  select(-`In 2-person carpool`:-`In 7-or-more-person carpool`) %>% 
+  rename(`Total (ComType)` = Total)
+```
+
+```{r}
+# Import Median Contract Rent Data
+rent_data <- data.frame()
+for (iter in seq(10, 21)) {
+  path <- paste0("Data/ACS and Census Data/Median Contract Rent 2010-2021/ACSDT5Y20", iter, ".B25058-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("B25058_001")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    mutate(across(Geography:`Median contract rent`, as.numeric)) %>% 
+    mutate(across(Geography:`Median contract rent`, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  rent_data <- bind_rows(rent_data, new_data)
+}
+```
+
+```{r}
+# Import Median Home Value Data
+home_data <- data.frame()
+for (iter in seq(10, 21)) {
+  path <- paste0("Data/ACS and Census Data/Median Home Values 2010-2021/ACSDT5Y20", iter, ".B25077-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("B25077_001")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    mutate(across(Geography:`Median value (dollars)`, as.numeric)) %>% 
+    mutate(across(Geography:`Median value (dollars)`, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  home_data <- bind_rows(home_data, new_data)
+}
+```
+
+```{r}
+# Import Median Income Data
+income_data <- data.frame()
+for (iter in seq(10, 16)) {
+  path <- paste0("Data/ACS and Census Data/Median Income 2010-2021/ACSST5Y20", iter, ".S1903-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("C02_001")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    mutate(across(Geography:Households, as.numeric)) %>% 
+    mutate(across(Geography:Households, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  income_data <- bind_rows(income_data, new_data)
+}
+
+# Order of results changed from 2017 to 2021
+for (iter in seq(17, 21)) {
+  path <- paste0("Data/ACS and Census Data/Median Income 2010-2021/ACSST5Y20", iter, ".S1903-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("C03_001")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    mutate(across(Geography:Households, as.numeric)) %>% 
+    mutate(across(Geography:Households, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  income_data <- bind_rows(income_data, new_data)
+}
+```
+
+```{r}
+# Import Race Data
+race_data <- data.frame()
+for (iter in seq(10, 21)) {
+  path <- paste0("Data/ACS and Census Data/Race 2010-2021/ACSDT5Y20", iter, ".B02001-Data.csv")
+  new_data <- read_csv(path, show_col_types = FALSE)
+  new_data <- new_data %>% 
+    select(-matches("A$|M$")) %>% # Remove columns that are not estimates
+    select("GEO_ID", matches("B02001_0[0-1][1-9]")) %>% # Remove misc columns
+    mutate(GEO_ID = str_remove(GEO_ID, "1400000US")) %>% # Get census tract number
+    setNames(str_extract(unlist(.[1, ]), "Geography|(?<=!!)[^!]*$")) %>% # Clean up column names
+    slice(-1) %>% 
+    mutate(across(Geography:`Two races including Some other race`, as.numeric)) %>% 
+    mutate(across(Geography:`Two races including Some other race`, ~ ifelse(is.na(.x), 0, .x))) %>% 
+    mutate(year = as.integer(paste0("20", iter))) 
+  # Combine with full age data
+  race_data <- bind_rows(race_data, new_data)
+}
+
+# Fix bug with total count
+race_data <- race_data %>% 
+  mutate(`Two or more races` = ifelse(is.na(`Two or more races`), `Two or more races:`,  `Two or more races`)) %>% 
+  select(-`Two or more races:`, -`Total:`, -`Two races including Some other race`, -Total)
+```
+
+# Joining Data Together
+
+With the individual data categories cleaned they can now be joined together along
+with geographic data about the census tracts and taxi trip data.
+
+```{r}
+# Geographic Tract Data
+# Illinois Census Tract Data
+geo_data <- read_sf("C:/Users/Norpotatos/Downloads/tl_2020_17_tract.shp")
+geo_data <- subset(geo_data, select = c("GEOID", "geometry"))
+geo_data$GEOID <- as.double(geo_data$GEOID)
+
+# Metro Station Data
+metro_data <- read_sf("C:/Users/Norpotatos/Downloads/Metra_Stations/MetraStations.shp")
+metro_data <- st_cast(metro_data, "POINT")
+metro_data <- st_transform(metro_data, crs = 4269)
+
+# Bus Stop Data
+bus_data <- read_sf("C:/Users/Norpotatos/Downloads/CTA_BusStops/CTA_BusStops.shp")
+bus_data <- st_transform(bus_data, crs = 4269)
+
+# Taxi Trip Data
+taxi_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/annual_tract_taxi_trips.csv")
+colnames(taxi_data) <- c("year", "Geography", "taxi_trips")
+
+acs_data <- age_data %>%
+  inner_join(comtime_data, by = join_by(Geography, year)) %>%
+  inner_join(home_data, by = join_by(Geography, year)) %>%
+  inner_join(income_data, by = join_by(Geography, year)) %>%
+  inner_join(rent_data, by = join_by(Geography, year)) %>%
+  inner_join(race_data, by = join_by(Geography, year)) %>%
+  inner_join(comtype_data, by = join_by(Geography, year)) %>% 
+  left_join(taxi_data, by = join_by(Geography, year)) %>% 
+  left_join(geo_data, by = join_by(Geography == GEOID))
+
+acs_data <- as_tsibble(acs_data, index = year, key = Geography)
+```
+
+
+
