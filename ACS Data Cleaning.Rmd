@@ -26,7 +26,7 @@ being imported into R almost every file was pre-processed in Excel for convenien
 
 ```{r}
 # Method of Transport Data
-transport_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B08301-2023-05-11T185152.csv")
+transport_data <- read_csv("./Data/ACS and Census Data/ACSDT5Y2021.B08301-2023-05-11T185152.csv")
 
 # Get data in tidy format
 transport_data <- pivot_longer(transport_data, cols = c(2:length(transport_data)), names_to = "Census Tract")
@@ -52,7 +52,7 @@ sum(is.na(transport_data))
 ```
 ```{r}
 # Commute Times Data
-commute_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B08303-2023-05-11T185220.csv")
+commute_data <- read_csv("./Data/ACS and Census Data/ACSDT5Y2021.B08303-2023-05-11T185220.csv")
 
 # Get data in tidy format
 commute_data <- pivot_longer(commute_data, cols = c(2:length(commute_data)), names_to = "Census Tract")
@@ -75,7 +75,7 @@ sum(is.na(commute_data))
 ```
 ```{r}
 # Gross Rent Data
-rent_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B25031-2023-05-11T225456.csv")
+rent_data <- read_csv("./Data/ACS and Census Data/ACSDT5Y2021.B25031-2023-05-11T225456.csv")
 
 # Get data in tidy format
 rent_data <- pivot_longer(rent_data, cols = c(2:length(rent_data)), names_to = "Census Tract")
@@ -103,7 +103,7 @@ sum(is.na(rent_data))
 ```
 ```{r}
 # Median Rent Data
-mrent_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B25058-2023-05-11T225537.csv")
+mrent_data <- read_csv("./Data/ACS and Census Data/ACSDT5Y2021.B25058-2023-05-11T225537.csv")
 
 # Replace dashes with zero
 for (idx in c(1:length(mrent_data))) {
@@ -133,7 +133,7 @@ sum(is.na(mrent_data))
 ```
 ```{r}
 # Median Home Value Data
-homevalue_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSDT5Y2021.B25077-2023-05-11T184111.csv")
+homevalue_data <- read_csv("./Data/ACS and Census Data/ACSDT5Y2021.B25077-2023-05-11T184111.csv")
 
 # Replace dashes with zero
 for (idx in c(1:length(homevalue_data))) {
@@ -163,7 +163,7 @@ sum(is.na(homevalue_data))
 ```
 ```{r}
 # Age Data
-age_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSST5Y2021.S0101-2023-05-11T225911.csv")
+age_data <- read_csv("./Data/ACS and Census Data/ACSST5Y2021.S0101-2023-05-11T225911.csv")
 
 # Get data in tidy format
 age_data <- pivot_longer(age_data, cols = c(2:length(age_data)), names_to = "Census Tract")
@@ -189,7 +189,7 @@ sum(is.na(age_data))
 ```
 ```{r}
 # Income Data
-income_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/ACSST5Y2021.S1903-2023-05-11T192004.csv")
+income_data <- read_csv("./Data/ACS and Census Data/ACSST5Y2021.S1903-2023-05-11T192004.csv")
 
 # Get data in tidy format
 income_data <- pivot_longer(income_data, cols = c(2:length(income_data)), names_to = "Census Tract")
@@ -216,7 +216,7 @@ sum(is.na(income_data))
 ```
 ```{r}
 # Race Data
-race_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/ACS and Census Data/DECENNIALPL2020.P1-2023-05-11T190224.csv")
+race_data <- read_csv("./Data/ACS and Census Data/DECENNIALPL2020.P1-2023-05-11T190224.csv")
 
 # Get data in tidy format
 race_data <- pivot_longer(race_data, cols = c(2:length(race_data)), names_to = "Census Tract")
@@ -239,7 +239,7 @@ sum(is.na(race_data))
 ```
 ```{r}
 # Taxi Trip Data
-taxi_data <- read_csv("C:/Users/Norpotatos/Documents/GitHub/ChicagoLand/Data/annual_tract_taxi_trips.csv")
+taxi_data <- read_csv("./Data/annual_tract_taxi_trips.csv")
 
 # Rename columns
 colnames(taxi_data) <- c("year", "Census Tract", "taxi_trips")
@@ -256,14 +256,14 @@ easy to join the data into a single data set for further analysis.
 
 ```{r}
 acs_data <- age_data %>%
-  inner_join(commute_data, by = join_by(`Census Tract`)) %>%
-  inner_join(homevalue_data, by = join_by(`Census Tract`)) %>%
-  inner_join(income_data, by = join_by(`Census Tract`)) %>%
-  inner_join(mrent_data, by = join_by(`Census Tract`)) %>%
-  inner_join(race_data, by = join_by(`Census Tract`)) %>%
-  inner_join(rent_data, by = join_by(`Census Tract`)) %>%
-  inner_join(transport_data, by = join_by(`Census Tract`)) %>% 
-  left_join(taxi_data, by = join_by(`Census Tract`))
+  inner_join(commute_data, by = "Census Tract") %>%
+  inner_join(homevalue_data, by = "Census Tract") %>%
+  inner_join(income_data, by = "Census Tract") %>%
+  inner_join(mrent_data, by = "Census Tract") %>%
+  inner_join(race_data, by = "Census Tract") %>%
+  inner_join(rent_data, by = "Census Tract") %>%
+  inner_join(transport_data, by = "Census Tract") %>% 
+  left_join(taxi_data, by = "Census Tract")
 
 acs_data$year <- 2021
 acs_data$taxi_trips <- ifelse(is.na(acs_data$taxi_trips), 0, acs_data$taxi_trips)
@@ -275,18 +275,18 @@ We can also join this data set on shapefile data to make geospatial visualizatio
 
 ```{r}
 # Illinois Census Tract Data
-geo_data <- read_sf("C:/Users/Norpotatos/Downloads/tl_2020_17_tract.shp")
+geo_data <- read_sf("./Data/Tract Data/tl_2018_17_tract.shp")
 geo_data <- subset(geo_data, select = c("GEOID", "geometry"))
 geo_data$GEOID <- as.double(geo_data$GEOID)
 acs_data <- left_join(acs_data, geo_data, by = c("Census Tract" = "GEOID"))
 
 # Metro Station Data
-metro_data <- read_sf("C:/Users/Norpotatos/Downloads/Metra_Stations/MetraStations.shp")
+metro_data <- read_sf("./Data/Metra_Stations/MetraStations.shp")
 metro_data <- st_cast(metro_data, "POINT")
 metro_data <- st_transform(metro_data, crs = 4269)
 
 # Bus Stop Data
-bus_data <- read_sf("C:/Users/Norpotatos/Downloads/CTA_BusStops/CTA_BusStops.shp")
+bus_data <- read_sf("./Data/CTA_BusStops/CTA_BusStops.shp")
 bus_data <- st_transform(bus_data, crs = 4269)
 ```
 
